@@ -7,6 +7,8 @@ import pandas as pd
 import streamlit as st
 from pathlib import Path
 import logging
+from contextlib import redirect_stderr
+from io import StringIO
 
 # Set up logging to file
 logging.basicConfig(
@@ -70,6 +72,7 @@ os.makedirs(CLEAR_DIR, exist_ok=True)
 
 AUDIO_EXTS = (".wav", ".mp3", ".flac", ".m4a", ".ogg")
 TARGET_SR = 16000
+MAX_DURATION = 30.0  # Limit audio to 30 seconds for faster processing
 
 # Load Whisper model if available
 try:
@@ -93,74 +96,42 @@ def list_audio_files(root: str) -> List[str]:
     for r, _, fs in os.walk(root):
         for f in fs:
             if f.lower().endswith(AUDIO_EXTS):
-                files.append(os.path.join(r, f))
+                files.append(os.path.normpath(os.path.join(r, f)))
     st.write(f"Found {len(files)} audio files in {root}")
     return files
 
-# def load_audio_any(path: str, sr: int = TARGET_SR) -> Tuple[np.ndarray, int]:
-#     if not librosa:
-#         return None, None
-#     try:
-#         path = os.path.normpath(path)  # Normalize path for cross-platform compatibility
-#         y, s = librosa.load(path, sr=sr, mono=True)
-#         if len(y) < sr * 0.1:
-#             st.warning(f"Audio too short: {path}")
-#             return None, None
-#         return y, s
-#     except Exception as e:
-#         logging.error(f"Error loading {path}: {e}")
-#         st.warning(f"Failed to load {os.path.basename(path)}. Ensure ffmpeg is installed for MP3 support.")
-#         return None, None
 def load_audio_any(path: str, sr: int = TARGET_SR) -> Tuple[np.ndarray, int]:
     if not librosa:
         return None, None
-
     path = os.path.normpath(path)
-    
-    # Use ffmpeg to convert mp3 to wav if needed
+    stderr = StringIO()
     try:
-        if path.lower().endswith(".mp3"):
-            import tempfile
-            import subprocess
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp_wav:
-                ffmpeg_cmd = [
-                    "ffmpeg", "-y", "-loglevel", "quiet",
-                    "-i", path,
-                    "-ar", str(sr),  # sample rate
-                    "-ac", "1",      # mono
-                    tmp_wav.name
-                ]
-                result = subprocess.run(ffmpeg_cmd, capture_output=True)
-                if result.returncode != 0:
-                    raise RuntimeError(f"ffmpeg failed on {path}")
-
-                y, s = librosa.load(tmp_wav.name, sr=sr, mono=True)
-        else:
-            y, s = librosa.load(path, sr=sr, mono=True)
-
+        with redirect_stderr(stderr):
+            y, s = librosa.load(path, sr=sr, mono=True, duration=MAX_DURATION)
         if len(y) < sr * 0.1:
-            st.warning(f"Audio too short: {os.path.basename(path)}")
+            logging.error(f"Audio too short: {path}")
             return None, None
-
         return y, s
     except Exception as e:
-        logging.error(f"Error loading {path}: {e}")
-        st.warning(f"Failed to load {os.path.basename(path)}. Skipping.")
+        logging.error(f"Error loading {path}: {e}\nSTDERR: {stderr.getvalue()}")
         return None, None
-
-
 
 def cache_or_compute(cache_path: str, func):
     cache_path = os.path.normpath(cache_path)
     if os.path.exists(cache_path):
-        data = np.load(cache_path, allow_pickle=True)
-        return data.item() if data.ndim == 0 else data
+        try:
+            data = np.load(cache_path, allow_pickle=True)
+            return data.item() if data.ndim == 0 else data
+        except Exception as e:
+            logging.error(f"Error loading cache {cache_path}: {e}")
     result = func()
-    if isinstance(result, np.ndarray):
-        np.save(cache_path, result)
-    else:
-        np.save(cache_path, np.array([result], dtype=object))
+    try:
+        if isinstance(result, np.ndarray):
+            np.save(cache_path, result)
+        else:
+            np.save(cache_path, np.array([result], dtype=object))
+    except Exception as e:
+        logging.error(f"Error saving cache {cache_path}: {e}")
     return result
 
 # =============================
@@ -170,14 +141,17 @@ def clean_and_save_audio(file_path: str) -> str:
     if not (librosa and nr and sf):
         return None
     file_path = os.path.normpath(file_path)
+    # Check if cleaned file already exists
+    safe_name = re.sub(r'[^\w.]', '_', os.path.basename(file_path).rsplit('.', 1)[0]) + '.wav'
+    out_path = os.path.normpath(os.path.join(CLEAR_DIR, safe_name))
+    if os.path.exists(out_path):
+        return out_path
     y, sr = load_audio_any(file_path, sr=TARGET_SR)
     if y is None:
         return None
     try:
         y_clean = nr.reduce_noise(y=y, sr=sr)
         y_clean = librosa.util.normalize(y_clean)
-        out_path = os.path.join(CLEAR_DIR, os.path.basename(file_path).rsplit('.', 1)[0] + '.wav')
-        out_path = os.path.normpath(out_path)
         sf.write(out_path, y_clean, sr)
         return out_path
     except Exception as e:
@@ -313,10 +287,12 @@ def transcribe_with_whisper(file_path: str) -> str:
         logging.error(f"Whisper error: File not found: {file_path}")
         return ""
     try:
-        result = whisper_model.transcribe(file_path)
+        stderr = StringIO()
+        with redirect_stderr(stderr):
+            result = whisper_model.transcribe(file_path)
         return result["text"].strip()
     except Exception as e:
-        logging.error(f"Whisper error for {file_path}: {e}")
+        logging.error(f"Whisper error for {file_path}: {e}\nSTDERR: {stderr.getvalue()}")
         return ""
 
 def repetition_stats_from_text(text: str) -> Dict[str, float]:
@@ -355,7 +331,8 @@ def extract_audio_features(y: np.ndarray, sr: int) -> np.ndarray:
             np.mean(chroma, axis=1), np.std(chroma, axis=1)
         ])
         return np.hstack([mfcc_stats, chroma_stats]).astype(np.float32)
-    except Exception:
+    except Exception as e:
+        logging.error(f"Error extracting audio features: {e}")
         return np.zeros(76, dtype=np.float32)
 
 def extract_text_features(text: str) -> np.ndarray:
@@ -429,13 +406,13 @@ def plot_roc(y_true, y_score_dict, n_classes, class_names):
 
     fig.update_layout(
         title=dict(text="Multi-Class ROC Curves", x=0.5, xanchor='center', font=dict(size=20)),
-        xaxis_title=dict(text="False Positive Rate", font=dict(color="black", size=16)),
-        yaxis_title=dict(text="True Positive Rate", font=dict(color="black", size=16)),
-        xaxis=dict(range=[0, 1], gridcolor='rgb(15, 18, 11)', showgrid=True),
-        yaxis=dict(range=[0, 1], gridcolor='rgb(15, 18, 11)', showgrid=True),
+        xaxis_title="False Positive Rate",
+        yaxis_title="True Positive Rate",
+        xaxis=dict(range=[0, 1], gridcolor='rgba(200,200,200,0.3)', showgrid=True),
+        yaxis=dict(range=[0, 1], gridcolor='rgba(200,200,200,0.3)', showgrid=True),
         hovermode='closest',
         legend=dict(x=1.02, y=0.98, xanchor='left', yanchor='top', bgcolor='rgba(255,255,255,0.9)', 
-                    bordercolor='black', borderwidth=1, font=dict(size=12,color='black')),
+                    bordercolor='black', borderwidth=1, font=dict(size=12)),
         width=900,
         height=700,
         plot_bgcolor='white',
@@ -451,6 +428,10 @@ def plot_roc(y_true, y_score_dict, n_classes, class_names):
 def main():
     st.title("Dysfluency Classification & Analysis Pipeline")
     st.write("### Processing audio files for dysfluency detection")
+
+    # Option to disable Whisper or noise reduction
+    use_whisper = st.checkbox("Enable Whisper transcription (slower)", value=False)
+    use_noise_reduction = st.checkbox("Enable noise reduction (slower)", value=True)
 
     # 1) Gather files
     files = list_audio_files(DATA_DIR)
@@ -479,7 +460,7 @@ def main():
         flat_before = spectral_flatness_mean(y_raw, TARGET_SR)
         hf_before = high_freq_energy_ratio(y_raw, TARGET_SR)
 
-        out = clean_and_save_audio(f)
+        out = clean_and_save_audio(f) if use_noise_reduction else f
         if out is None:
             skipped_files += 1
             continue
@@ -490,15 +471,15 @@ def main():
         if y_clean is None:
             skipped_files += 1
             continue
-        snr_after = segmental_snr_db(y_clean)
-        flat_after = spectral_flatness_mean(y_clean, TARGET_SR)
-        hf_after = high_freq_energy_ratio(y_clean, TARGET_SR)
+        snr_after = segmental_snr_db(y_clean) if use_noise_reduction else snr_before
+        flat_after = spectral_flatness_mean(y_clean, TARGET_SR) if use_noise_reduction else flat_before
+        hf_after = high_freq_energy_ratio(y_clean, TARGET_SR) if use_noise_reduction else hf_before
 
         breaths = detect_breath_segments(y_clean, TARGET_SR)
         plos = detect_plosives(y_clean, TARGET_SR)
         prols = detect_prolongations(y_clean, TARGET_SR)
 
-        text = transcribe_with_whisper(out)
+        text = transcribe_with_whisper(out) if use_whisper else ""
         transcripts.append(text)
         rep_stats = repetition_stats_from_text(text)
 
@@ -525,7 +506,7 @@ def main():
     st.write(f"Processed {processed_count} files successfully. Skipped {skipped_files} files due to errors.")
 
     if not per_file_rows:
-        st.error("No valid audio files processed. Install ffmpeg for MP3 support.")
+        st.error("No valid audio files processed. Install ffmpeg for MP3 support or check file integrity.")
         return
 
     # Save and display per-file analysis
@@ -534,7 +515,7 @@ def main():
     analysis_df.to_csv(analysis_csv, index=False)
     st.write("### Per-File Analysis")
     st.dataframe(analysis_df)
-    st.write(f"Saved per-file analysis to {analysis_csv}")
+    st.download_button("Download Per-File Analysis", analysis_df.to_csv(index=False), file_name="per_file_analysis.csv")
 
     # 3) Feature Extraction
     X, y_all = [], []
@@ -597,12 +578,15 @@ def main():
         df_metrics.to_csv(metrics_csv, index=False)
         st.write("### Model Accuracy (in %)")
         st.dataframe(df_metrics)
+        st.download_button("Download Metrics Summary", df_metrics.to_csv(index=False), file_name="metrics_summary.csv")
     else:
         st.warning("No models trained successfully.")
 
     # 5) ROC Curves
     if probabilities:
-        y_score_dict = probabilities
+        st.write("### Select Model for ROC Curves")
+        model_choice = st.selectbox("Choose Model", list(models.keys()) + ["All"])
+        y_score_dict = {k: v for k, v in probabilities.items() if model_choice == "All" or k == model_choice}
         roc_fig, auc_df = plot_roc(y_test, y_score_dict, n_classes=len(le.classes_), class_names=le.classes_)
         st.write("### ROC Curves")
         st.plotly_chart(roc_fig, use_container_width=True)
@@ -634,6 +618,13 @@ def main():
         feat_df.to_csv(feat_csv, index=False)
         st.write("### Feature Importances (Top 10)")
         st.dataframe(feat_df.head(10))
+        st.download_button("Download Feature Importances", feat_df.to_csv(index=False), file_name="feature_importances.csv")
+
+    # Download error log
+    error_log_path = os.path.join(OUTPUT_DIR, "pipeline_errors.log")
+    if os.path.exists(error_log_path):
+        with open(error_log_path, "r") as f:
+            st.download_button("Download Error Log", f.read(), file_name="pipeline_errors.log")
 
     st.success(f"Pipeline Complete. Processed {len(per_file_rows)} files. Skipped {skipped_files} files. Check {OUTPUT_DIR} for CSVs.")
 
