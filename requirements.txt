@@ -1,0 +1,11 @@
+streamlit
+tqdm
+librosa
+noisereduce
+soundfile
+scikit-learn
+plotly
+openai-whisper
+numpy
+pandas
+matplotlib
