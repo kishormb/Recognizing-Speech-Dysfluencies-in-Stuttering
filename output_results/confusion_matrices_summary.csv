@@ -1,0 +1,7 @@
+dataset,model,confusion_csv,report_csv
+before,RandomForest,output_results\confusion_before_RandomForest.csv,output_results\class_report_before_RandomForest.csv
+before,MLP,output_results\confusion_before_MLP.csv,output_results\class_report_before_MLP.csv
+before,SVM,output_results\confusion_before_SVM.csv,output_results\class_report_before_SVM.csv
+after,RandomForest,output_results\confusion_after_RandomForest.csv,output_results\class_report_after_RandomForest.csv
+after,MLP,output_results\confusion_after_MLP.csv,output_results\class_report_after_MLP.csv
+after,SVM,output_results\confusion_after_SVM.csv,output_results\class_report_after_SVM.csv

@@ -1,0 +1,10 @@
+model,class,auc
+RandomForest,Prolongatio sample,0.7695035460992907
+RandomForest,syllable repetition,0.6831417624521073
+RandomForest,word repetition,0.78765664160401
+MLP,Prolongatio sample,0.7945035460992907
+MLP,syllable repetition,0.7454022988505747
+MLP,word repetition,0.8266290726817043
+SVM,Prolongatio sample,0.8073581560283688
+SVM,syllable repetition,0.6827586206896551
+SVM,word repetition,0.8523182957393483

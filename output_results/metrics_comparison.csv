@@ -1,0 +1,7 @@
+dataset,model,accuracy_pct,test_loss
+before,Random Forest,65.19,0.857
+before,MLP,61.88,0.8579
+before,SVM,70.17,0.7684
+after,Random Forest,64.09,0.8423
+after,MLP,61.33,0.8857
+after,SVM,66.85,0.8031

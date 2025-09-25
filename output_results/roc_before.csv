@@ -1,0 +1,10 @@
+model,class,auc
+RF,Prolongatio sample,0.7617021276595745
+RF,syllable repetition,0.6349616858237547
+RF,word repetition,0.7822681704260652
+MLP,Prolongatio sample,0.7945921985815603
+MLP,syllable repetition,0.7450191570881226
+MLP,word repetition,0.8262531328320802
+SVM,Prolongatio sample,0.8073581560283688
+SVM,syllable repetition,0.6827586206896551
+SVM,word repetition,0.8523182957393483
