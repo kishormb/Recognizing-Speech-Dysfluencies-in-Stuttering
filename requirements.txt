@@ -1,0 +1,22 @@
+# Core framework
+streamlit
+
+# Audio processing
+librosa
+noisereduce
+soundfile
+
+# ML + Stats
+scikit-learn
+numpy
+scipy
+pandas
+
+# Visualization
+plotly
+matplotlib
+seaborn
+
+# Utilities
+tqdm
+joblib
