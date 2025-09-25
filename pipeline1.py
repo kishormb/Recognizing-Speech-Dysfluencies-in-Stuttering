@@ -617,16 +617,16 @@ def run_pipeline():
             st.plotly_chart(px.bar(feat_df.head(20).sort_values("importance"), x="importance", y="feature",
                                    orientation="h", title="Top 20 Feature Importances ( after)"), use_container_width=True)
 
-            # permutation importance (more robust)
-            st.write("Computing permutation importance (may take a while)...")
-            perm_res = permutation_importance(rf, Xa_test, ya_test, n_repeats=20, random_state=42, n_jobs=1)
-            perm_df = pd.DataFrame({"feature": fname, "perm_importance_mean": perm_res.importances_mean,
-                                     "perm_importance_std": perm_res.importances_std})
-            perm_df = perm_df.sort_values("perm_importance_mean", ascending=False).reset_index(drop=True)
-            perm_csv = os.path.join(OUTPUT_DIR, "permutation_importances_after_rf.csv")
-            perm_df.to_csv(perm_csv, index=False)
-            st.write("Top-20 permutation importances:")
-            st.dataframe(perm_df.head(20))
+            # # permutation importance (more robust)
+            # st.write("Computing permutation importance (may take a while)...")
+            # perm_res = permutation_importance(rf, Xa_test, ya_test, n_repeats=20, random_state=42, n_jobs=1)
+            # perm_df = pd.DataFrame({"feature": fname, "perm_importance_mean": perm_res.importances_mean,
+            #                          "perm_importance_std": perm_res.importances_std})
+            # perm_df = perm_df.sort_values("perm_importance_mean", ascending=False).reset_index(drop=True)
+            # perm_csv = os.path.join(OUTPUT_DIR, "permutation_importances_after_rf.csv")
+            # perm_df.to_csv(perm_csv, index=False)
+            # st.write("Top-20 permutation importances:")
+            # st.dataframe(perm_df.head(20))
             #st.plotly_chart(px.bar(perm_df.head(20).sort_values("perm_importance_mean"), x="perm_importance_mean", y="feature",
              #                      orientation="h", title="Top 20 Permutation Importances (after)"), use_container_width=True)
 
