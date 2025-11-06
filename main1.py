@@ -499,7 +499,7 @@
 
 #!/usr/bin/env python3
 """
-Dysfluency Classification – 90-95 % Accuracy + Publication Plots
+Dysfluency Classification 
 Put audio in: segrigated_samples/<label>/*.wav|mp3|m4a
 Run: streamlit run main1.py
 """
