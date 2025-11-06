@@ -789,7 +789,7 @@ def plot_permutation_importance(imp_df):
 # ----------------------------------------------------------------------
 def run_pipeline():
     st.set_page_config(page_title="Dysfluency Pro", layout="wide")
-    st.title("Dysfluency Classification – 90-95 % Accuracy + Plots")
+    st.title("Dysfluency Classification ")
 
     # ---- Auto-clear old incompatible models ----
     for f in ["scaler_after.pkl", "model_rf.pkl", "label_encoder.pkl"]:
