@@ -796,7 +796,7 @@ def run_pipeline():
         p = os.path.join(OUTPUT_DIR, f)
         if os.path.exists(p):
             os.unlink(p)
-            st.info(f"Cleared old `{f}` to avoid feature mismatch.")
+            st.info(f" `{f}` ")
 
     files = list_audio_files(DATA_DIR)
     if not files:
